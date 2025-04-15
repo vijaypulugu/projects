@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dynamics Web Resource with MSAL</title>
+  <script
+  type="text/javascript"
+  src="https://alcdn.msauth.net/browser/2.3.0/js/msal-browser.min.js"
+></script>
+<script type="text/javascript">
+  if (typeof msal === "undefined")
+      document.write(
+          unescape(
+              "%3Cscript src='https://alcdn.msftauth.net/browser/2.3.0/js/msal-browser.min.js' type='text/javascript' %3E%3C/script%3E"
+          )
+      );
+</script>
+</head>
+<body>
+  <h3>MSAL Token + Logic App Call</h3>
+  <pre id="apiResponse">Waiting for token...</pre>
+
+  <script type="text/javascript">
+    window.onload = function () {
+      console.log("Web resource loaded");
+
+      const msalConfig = {
+        auth: {
+            clientId: "<ClientID>", // Replace with your Entra App's Client ID
+        authority: "https://login.microsoftonline.com/<Tenantid>", // Replace with your tenant ID
+        redirectUri: "<redirecr url>", // Replace with your environment URI
+        },
+        cache: {
+          cacheLocation: "sessionStorage",
+          storeAuthStateInCookie: false
+        }
+      };
+
+      const loginRequest = {
+        scopes: ["https://service.flow.microsoft.com//.default"] // Update scope as needed
+      };
+
+      const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+      msalInstance.handleRedirectPromise()
+        .then(() => {
+          const account = msalInstance.getAllAccounts()[0];
+          if (account) {
+            console.log("Account found:", account.username);
+            acquireToken(msalInstance, account);
+          } else {
+            console.log("No account found, initiating login.");
+            msalInstance.loginPopup(loginRequest).then(loginResp => {
+              console.log("Login successful:", loginResp.account.username);
+              acquireToken(msalInstance, loginResp.account);
+            });
+          }
+        })
+        .catch(error => {
+          console.error("MSAL error:", error);
+        });
+
+      function acquireToken(msalInstance, account) {
+        msalInstance.acquireTokenSilent({
+          ...loginRequest,
+          account: account
+        }).then(response => {
+          console.log("Token acquired:", response.accessToken);
+          callLogicApp(response.accessToken);
+        }).catch(err => {
+          console.warn("Silent token failed, using popup.");
+          msalInstance.acquireTokenPopup(loginRequest).then(response => {
+            callLogicApp(response.accessToken);
+          }).catch(err => {
+            console.error("Token acquisition failed:", err);
+          });
+        });
+      }
+
+      function callLogicApp(token) {
+        const url = "<Http flow Url to call>";
+        fetch(url, {
+          method: "GET",
+          headers: {
+            "Authorization": Bearer ${token},
+            "Accept": "application/json"
+          }
+        })
+        .then(response => {
+          if (!response.ok) throw new Error(HTTP ${response.status});
+          return response.json();
+        })
+        .then(data => {
+          console.log("Http Flow Response:", data);
+          document.getElementById("apiResponse").textContent = JSON.stringify(data, null, 2);
+        })
+        .catch(error => {
+          console.error("API error:", error);
+          document.getElementById("apiResponse").textContent = "API call failed: " + error;
+        });
+      }
+    };
+  </script>
+</body>
+</html>
